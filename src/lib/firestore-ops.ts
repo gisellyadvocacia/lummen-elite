@@ -24,6 +24,7 @@ import type {
   UserProfile,
   WeeklyNote,
   Reward,
+  Redemption,
   UserTier,
   WeeklyNoteStatus,
 } from "./types";
@@ -260,6 +261,57 @@ export async function updateBrokerProfile(
   await updateDoc(userRef, {
     ...data,
     atualizado_em: serverTimestamp(),
+  });
+}
+
+// ============================================================
+// Resgates — Queries
+// ============================================================
+
+/** Busca resgates de um corretor */
+export function subscribeBrokerRedemptions(
+  brokerUid: string,
+  callback: (redemptions: Redemption[]) => void,
+) {
+  const q = query(
+    collection(db, "redemptions"),
+    where("brokerUid", "==", brokerUid),
+    orderBy("createdAt", "desc"),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const redemptions = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        ...data,
+        id: d.id,
+        createdAt: (data.createdAt as Timestamp)?.toDate() ?? new Date(),
+      } as Redemption;
+    });
+    callback(redemptions);
+  });
+}
+
+/** Busca todos os resgates (admin) */
+export function subscribeAllRedemptions(
+  callback: (redemptions: Redemption[]) => void,
+) {
+  const q = query(
+    collection(db, "redemptions"),
+    orderBy("createdAt", "desc"),
+    limit(100),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const redemptions = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        ...data,
+        id: d.id,
+        createdAt: (data.createdAt as Timestamp)?.toDate() ?? new Date(),
+      } as Redemption;
+    });
+    callback(redemptions);
   });
 }
 

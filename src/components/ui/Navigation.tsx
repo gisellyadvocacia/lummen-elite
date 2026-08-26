@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Users,
   ClipboardList,
+  History,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -193,6 +194,14 @@ export function Navigation() {
                 >
                   <User className="w-4 h-4" strokeWidth={1.5} />
                   <span>Meu perfil</span>
+                </Link>
+                <Link
+                  href="/redemptions"
+                  className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <History className="w-4 h-4" strokeWidth={1.5} />
+                  <span>Meus Resgates</span>
                 </Link>
                 <button
                   onClick={handleLogout}

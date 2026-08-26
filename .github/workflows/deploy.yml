@@ -1,14 +1,6 @@
 # ============================================================
 # Lummen Elite — Deploy Automático via GitHub Actions + Vercel
 # ============================================================
-# Executa a cada push no branch master
-# Deploy preview em PRs, deploy production no master
-#
-# REQUER secrets no GitHub repo:
-#   VERCEL_TOKEN      → Token de acesso Vercel
-#   VERCEL_ORG_ID     → ID da organização/account Vercel
-#   VERCEL_PROJECT_ID → ID do projeto Vercel
-# ============================================================
 
 name: Deploy to Vercel
 
@@ -42,8 +34,8 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      - name: Pull Vercel environment
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Remove .vercel directory (avoid conflicts)
+        run: rm -rf .vercel
 
       - name: Build project
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}

@@ -2,10 +2,10 @@
 
 // ============================================================
 // Lummen Elite — Admin Panel
-// Ranking de corretores + Validação de notas semanais
+// Ranking + Validação + Filtros + Exportação
 // ============================================================
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   Gem,
   Trophy,
@@ -23,9 +23,11 @@ import {
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Navigation } from "@/components/ui/Navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { useAllUsers, usePendingNotes } from "@/hooks/useFirestore";
+import { useAllUsers, usePendingNotes, useAllNotes } from "@/hooks/useFirestore";
 import { validateWeeklyNote } from "@/lib/firestore-ops";
-import { TIER_CONFIG, type UserProfile, type WeeklyNote } from "@/lib/types";
+import { TIER_CONFIG, type UserProfile, type WeeklyNote, type UserTier } from "@/lib/types";
+import { AdminFilters, type AdminFiltersState } from "@/components/admin/AdminFilters";
+import { ExportButton } from "@/components/admin/ExportButton";
 
 // ============================================================
 // Componente: Badge de Posição no Ranking
@@ -199,11 +201,59 @@ export default function AdminPage() {
 function AdminContent() {
   const { profile } = useAuth();
   const { users, loading: usersLoading } = useAllUsers();
-  const { notes: pendingNotes, loading: notesLoading } = usePendingNotes();
+  const { notes: pendingNotes, loading: pendingLoading } = usePendingNotes();
+  const { notes: allNotes, loading: allNotesLoading } = useAllNotes();
   const [validating, setValidating] = useState<string | null>(null);
+  const [filters, setFilters] = useState<AdminFiltersState>({
+    search: "",
+    tier: "all",
+    status: "all",
+    period: "all",
+  });
 
   // Map uid → nome para exibição nas notas pendentes
   const userMap = new Map(users.map((u) => [u.uid, u.nome]));
+
+  // ── Filtros aplicados ──
+  const filteredUsers = useMemo(() => {
+    return users.filter((user) => {
+      // Search filter
+      if (filters.search) {
+        const search = filters.search.toLowerCase();
+        const matchesSearch =
+          user.nome.toLowerCase().includes(search) ||
+          user.email.toLowerCase().includes(search) ||
+          (user.creci && user.creci.toLowerCase().includes(search));
+        if (!matchesSearch) return false;
+      }
+
+      // Tier filter
+      if (filters.tier !== "all" && user.classificacao_atual !== filters.tier) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [users, filters]);
+
+  const filteredNotes = useMemo(() => {
+    return pendingNotes.filter((note) => {
+      // Search filter (match by broker name)
+      if (filters.search) {
+        const brokerName = userMap.get(note.brokerUid) ?? "";
+        if (!brokerName.toLowerCase().includes(filters.search.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Status filter
+      if (filters.status !== "all" && note.status !== filters.status) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [pendingNotes, filters, userMap]);
 
   const handleValidate = useCallback(
     async (noteId: string, status: "approved" | "rejected") => {
@@ -217,10 +267,10 @@ function AdminContent() {
         setValidating(null);
       }
     },
-    [profile],
+    [profile]
   );
 
-  const loading = usersLoading || notesLoading;
+  const loading = usersLoading || pendingLoading || allNotesLoading;
 
   return (
     <div className="min-h-screen bg-[#0B0F19]">
@@ -228,16 +278,24 @@ function AdminContent() {
 
       <main className="pt-28 pb-12 px-4 md:px-8 max-w-7xl mx-auto">
         {/* ── Header ── */}
-        <div className="mb-10 animate-fade-up">
-          <div className="flex items-center gap-2 mb-2">
-            <ShieldCheck className="w-4 h-4 text-amber-400" />
-            <p className="text-xs font-semibold text-amber-400/80 uppercase tracking-widest">
-              Painel Administrativo
-            </p>
+        <div className="flex items-start justify-between mb-8 animate-fade-up">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <ShieldCheck className="w-4 h-4 text-amber-400" />
+              <p className="text-xs font-semibold text-amber-400/80 uppercase tracking-widest">
+                Painel Administrativo
+              </p>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
+              Gestão e <span className="text-amber-400">Auditoria</span>
+            </h1>
           </div>
-          <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
-            Gestão e <span className="text-amber-400">Auditoria</span>
-          </h1>
+
+          <ExportButton
+            users={filteredUsers}
+            notes={allNotes}
+            type="all"
+          />
         </div>
 
         {loading ? (
@@ -245,71 +303,145 @@ function AdminContent() {
             <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* ── Ranking (3 cols) ── */}
-            <div className="lg:col-span-3">
-              <div className="card-premium p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <Trophy className="w-5 h-5 text-amber-400" strokeWidth={1.5} />
-                  <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                    Ranking de Corretores
-                  </h2>
-                  <span className="ml-auto px-2 py-0.5 rounded-full bg-white/5 text-slate-400 text-xs font-bold">
-                    {users.length}
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  {users
-                    .sort((a, b) => b.pontos_semestre - a.pontos_semestre)
-                    .map((user, i) => (
-                      <RankingRow key={user.uid} user={user} position={i + 1} />
-                    ))}
-                </div>
-              </div>
+          <>
+            {/* ── Filtros ── */}
+            <div className="mb-6">
+              <AdminFilters
+                filters={filters}
+                onFiltersChange={setFilters}
+                resultCount={filteredUsers.length + filteredNotes.length}
+              />
             </div>
 
-            {/* ── Notas Pendentes (2 cols) ── */}
-            <div className="lg:col-span-2">
-              <div className="card-premium p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <Clock className="w-5 h-5 text-amber-400" strokeWidth={1.5} />
-                  <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                    Validação Semanal
-                  </h2>
-                  {pendingNotes.length > 0 && (
-                    <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-xs font-bold">
-                      {pendingNotes.length}
+            {/* ── Stats Cards ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              {[
+                {
+                  icon: Users,
+                  label: "Total Corretores",
+                  value: users.length.toString(),
+                  accent: false,
+                },
+                {
+                  icon: Trophy,
+                  label: "Aprovados",
+                  value: allNotes.filter((n) => n.status === "approved").length.toString(),
+                  accent: true,
+                },
+                {
+                  icon: Clock,
+                  label: "Pendentes",
+                  value: pendingNotes.length.toString(),
+                  accent: pendingNotes.length > 0,
+                },
+                {
+                  icon: TrendingUp,
+                  label: "Média Notas",
+                  value: (
+                    allNotes.filter((n) => n.status === "approved").reduce((acc, n) => acc + n.nota_semanal, 0) /
+                      Math.max(allNotes.filter((n) => n.status === "approved").length, 1)
+                  ).toFixed(0),
+                  accent: false,
+                },
+              ].map((stat, i) => (
+                <div
+                  key={stat.label}
+                  className="card-premium p-5 animate-fade-up"
+                  style={{ animationDelay: `${i * 80}ms` }}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                        {stat.label}
+                      </p>
+                      <p className={`text-xl font-bold ${stat.accent ? "text-amber-400" : "text-white"}`}>
+                        {stat.value}
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white/5">
+                      <stat.icon
+                        className={`w-5 h-5 ${stat.accent ? "text-amber-400" : "text-slate-400"}`}
+                        strokeWidth={1.5}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              {/* ── Ranking (3 cols) ── */}
+              <div className="lg:col-span-3">
+                <div className="card-premium p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <Trophy className="w-5 h-5 text-amber-400" strokeWidth={1.5} />
+                    <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                      Ranking de Corretores
+                    </h2>
+                    <span className="ml-auto px-2 py-0.5 rounded-full bg-white/5 text-slate-400 text-xs font-bold">
+                      {filteredUsers.length}
                     </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {filteredUsers
+                      .sort((a, b) => b.pontos_semestre - a.pontos_semestre)
+                      .map((user, i) => (
+                        <RankingRow key={user.uid} user={user} position={i + 1} />
+                      ))}
+
+                    {filteredUsers.length === 0 && (
+                      <div className="text-center py-8">
+                        <Users className="w-8 h-8 text-slate-700 mx-auto mb-2" strokeWidth={1} />
+                        <p className="text-sm text-slate-500">Nenhum corretor encontrado</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Notas Pendentes (2 cols) ── */}
+              <div className="lg:col-span-2">
+                <div className="card-premium p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <Clock className="w-5 h-5 text-amber-400" strokeWidth={1.5} />
+                    <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                      Validação Semanal
+                    </h2>
+                    {filteredNotes.length > 0 && (
+                      <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-xs font-bold">
+                        {filteredNotes.length}
+                      </span>
+                    )}
+                  </div>
+
+                  {filteredNotes.length > 0 ? (
+                    <div className="space-y-4">
+                      {filteredNotes.map((note) => (
+                        <PendingNoteCard
+                          key={note.id}
+                          note={note}
+                          brokerName={userMap.get(note.brokerUid) ?? "Corretor"}
+                          onValidate={handleValidate}
+                          validating={validating}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <CheckCircle2 className="w-10 h-10 text-slate-700 mx-auto mb-3" strokeWidth={1} />
+                      <p className="text-sm text-slate-400 font-medium">
+                        Nenhuma nota pendente
+                      </p>
+                      <p className="text-xs text-slate-600 mt-1">
+                        Todas as notas semanais foram validadas
+                      </p>
+                    </div>
                   )}
                 </div>
-
-                {pendingNotes.length > 0 ? (
-                  <div className="space-y-4">
-                    {pendingNotes.map((note) => (
-                      <PendingNoteCard
-                        key={note.id}
-                        note={note}
-                        brokerName={userMap.get(note.brokerUid) ?? "Corretor"}
-                        onValidate={handleValidate}
-                        validating={validating}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <CheckCircle2 className="w-10 h-10 text-slate-700 mx-auto mb-3" strokeWidth={1} />
-                    <p className="text-sm text-slate-400 font-medium">
-                      Nenhuma nota pendente
-                    </p>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Todas as notas semanais foram validadas
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
-          </div>
+          </>
         )}
       </main>
     </div>

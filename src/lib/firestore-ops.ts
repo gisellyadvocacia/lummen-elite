@@ -264,6 +264,39 @@ export async function updateBrokerProfile(
 }
 
 // ============================================================
+// Notas Semanais — CRUD (Admin)
+// ============================================================
+
+/** Criar nova nota semanal */
+export async function createWeeklyNote(
+  note: Omit<WeeklyNote, "id" | "criado_em" | "validado_por" | "validado_em">
+): Promise<string> {
+  const docRef = await addDoc(collection(db, "weekly_notes"), {
+    ...note,
+    criado_em: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+/** Atualizar nota semanal */
+export async function updateWeeklyNote(
+  id: string,
+  data: Partial<Omit<WeeklyNote, "id" | "criado_em">>
+): Promise<void> {
+  const noteRef = doc(db, "weekly_notes", id);
+  await updateDoc(noteRef, {
+    ...data,
+    atualizado_em: serverTimestamp(),
+  });
+}
+
+/** Excluir nota semanal */
+export async function deleteWeeklyNote(id: string): Promise<void> {
+  const noteRef = doc(db, "weekly_notes", id);
+  await deleteDoc(noteRef);
+}
+
+// ============================================================
 // Mutações (escrita)
 // ============================================================
 

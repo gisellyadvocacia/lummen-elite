@@ -8,6 +8,8 @@ import {
   doc,
   getDoc,
   getDocs,
+  addDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -21,6 +23,7 @@ import { db } from "./firebase";
 import type {
   UserProfile,
   WeeklyNote,
+  Reward,
   UserTier,
   WeeklyNoteStatus,
 } from "./types";
@@ -138,6 +141,79 @@ export function subscribeAllUsers(
     const users = snap.docs.map((d) => d.data() as UserProfile);
     callback(users);
   });
+}
+
+// ============================================================
+// Recompensas — Queries
+// ============================================================
+
+/** Busca todas as recompensas ativas */
+export function subscribeRewards(callback: (rewards: Reward[]) => void) {
+  const q = query(
+    collection(db, "rewards"),
+    orderBy("criado_em", "desc"),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const rewards = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        ...data,
+        id: d.id,
+        criado_em: (data.criado_em as Timestamp)?.toDate() ?? new Date(),
+      } as Reward;
+    });
+    callback(rewards);
+  });
+}
+
+/** Busca recompensas ativas (para vitrine) */
+export function subscribeActiveRewards(callback: (rewards: Reward[]) => void) {
+  const q = query(
+    collection(db, "rewards"),
+    where("isActive", "==", true),
+    orderBy("pointsCost", "asc"),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const rewards = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        ...data,
+        id: d.id,
+        criado_em: (data.criado_em as Timestamp)?.toDate() ?? new Date(),
+      } as Reward;
+    });
+    callback(rewards);
+  });
+}
+
+// ============================================================
+// Recompensas — CRUD
+// ============================================================
+
+/** Criar nova recompensa */
+export async function createReward(reward: Omit<Reward, "id" | "criado_em">): Promise<string> {
+  const docRef = await addDoc(collection(db, "rewards"), {
+    ...reward,
+    criado_em: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+/** Atualizar recompensa */
+export async function updateReward(id: string, data: Partial<Omit<Reward, "id" | "criado_em">>): Promise<void> {
+  const rewardRef = doc(db, "rewards", id);
+  await updateDoc(rewardRef, {
+    ...data,
+    atualizado_em: serverTimestamp(),
+  });
+}
+
+/** Excluir recompensa */
+export async function deleteReward(id: string): Promise<void> {
+  const rewardRef = doc(db, "rewards", id);
+  await deleteDoc(rewardRef);
 }
 
 // ============================================================

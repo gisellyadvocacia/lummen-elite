@@ -21,6 +21,7 @@ const navItems = [
 
 const adminItems = [
   { href: "/admin", label: "Admin", icon: ShieldCheck },
+  { href: "/admin/rewards", label: "Premios", icon: Gift },
 ];
 
 export function Navigation() {

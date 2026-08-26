@@ -220,14 +220,13 @@ export interface PointsTransaction {
 
 export interface Reward {
   id: string;
-  name: string;
+  nome: string;
   description: string;
   pointsCost: number;
-  imageUrl: string;
   category: string;
   stock: number;
   isActive: boolean;
-  createdAt: Date;
+  criado_em: Date;
 }
 
 export interface Redemption {

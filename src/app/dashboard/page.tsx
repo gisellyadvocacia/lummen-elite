@@ -2,7 +2,7 @@
 
 // ============================================================
 // Lummen Elite — Dashboard do Corretor
-// Stats completos, progressão de tier, ranking e atividade
+// Stats completos, gráficos, progressão de tier e atividade
 // ============================================================
 
 import {
@@ -22,7 +22,10 @@ import {
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Navigation } from "@/components/ui/Navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { useDashboardData } from "@/hooks/useFirestore";
+import { useDashboardData, useAllUsers } from "@/hooks/useFirestore";
+import { WeeklyEvolutionChart } from "@/components/charts/WeeklyEvolutionChart";
+import { PerformanceComparisonChart } from "@/components/charts/PerformanceComparisonChart";
+import { TierDistributionChart } from "@/components/charts/TierDistributionChart";
 import { TIER_CONFIG, type UserTier } from "@/lib/types";
 
 // ── Ordem dos tiers para progressão ──
@@ -79,6 +82,7 @@ export default function DashboardPage() {
 function DashboardContent() {
   const { user, profile } = useAuth();
   const data = useDashboardData(profile);
+  const { users: allUsers, loading: usersLoading } = useAllUsers();
 
   const nome = profile?.nome?.split(" ")[0] ?? user?.displayName?.split(" ")[0] ?? "Corretor";
   const tier = profile?.classificacao_atual ?? "Sem Classificacao";
@@ -86,7 +90,7 @@ function DashboardContent() {
   const progress = getTierProgress(profile?.pontos_semestre ?? 0);
   const nextConfig = progress.next ? TIER_CONFIG[progress.next] : null;
 
-  if (data.loading) {
+  if (data.loading || usersLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0B0F19]">
         <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
@@ -219,49 +223,67 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* ── Atividade Semanal ── */}
-        <div className="card-premium p-6 mb-8 animate-fade-up delay-300">
-          <div className="flex items-center gap-3 mb-6">
-            <Calendar className="w-5 h-5 text-amber-400" strokeWidth={1.5} />
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-              Notas Semanais Aprovadas
-            </h2>
+        {/* ── Gráficos ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Evolução Semanal */}
+          <WeeklyEvolutionChart notes={data.notesAprovadas} />
+
+          {/* Comparativo de Performance */}
+          <PerformanceComparisonChart users={allUsers} currentUid={user?.uid} />
+        </div>
+
+        {/* ── Distribuição por Tier ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="lg:col-span-1">
+            <TierDistributionChart users={allUsers} />
           </div>
 
-          {data.notesAprovadas.length > 0 ? (
-            <div className="space-y-3">
-              {data.notesAprovadas.slice(0, 5).map((note, i) => (
-                <div
-                  key={note.id}
-                  className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] transition-colors animate-fade-up"
-                  style={{ animationDelay: `${i * 60}ms` }}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-                      <BarChart3 className="w-5 h-5 text-amber-400" strokeWidth={1.5} />
+          {/* ── Atividade Semanal ── */}
+          <div className="lg:col-span-2">
+            <div className="card-premium p-6 h-full">
+              <div className="flex items-center gap-3 mb-6">
+                <Calendar className="w-5 h-5 text-amber-400" strokeWidth={1.5} />
+                <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                  Notas Semanais Aprovadas
+                </h2>
+              </div>
+
+              {data.notesAprovadas.length > 0 ? (
+                <div className="space-y-3">
+                  {data.notesAprovadas.slice(0, 5).map((note, i) => (
+                    <div
+                      key={note.id}
+                      className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] transition-colors animate-fade-up"
+                      style={{ animationDelay: `${i * 60}ms` }}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                          <BarChart3 className="w-5 h-5 text-amber-400" strokeWidth={1.5} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-white">
+                            Semana {note.semana_inicio}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {note.vendas_fechadas} vendas · VGV R$ {note.vgv_semanal.toLocaleString("pt-BR")}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-amber-400">{note.nota_semanal}</p>
+                        <p className="text-[10px] text-emerald-400 font-semibold">+{note.pontos_ganhos} pts</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        Semana {note.semana_inicio}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {note.vendas_fechadas} vendas · VGV R$ {note.vgv_semanal.toLocaleString("pt-BR")}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-amber-400">{note.nota_semanal}</p>
-                    <p className="text-[10px] text-emerald-400 font-semibold">+{note.pontos_ganhos} pts</p>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="text-center py-8">
+                  <Clock className="w-8 h-8 text-slate-700 mx-auto mb-2" strokeWidth={1} />
+                  <p className="text-sm text-slate-500">Nenhuma nota aprovada ainda</p>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="text-center py-8">
-              <Clock className="w-8 h-8 text-slate-700 mx-auto mb-2" strokeWidth={1} />
-              <p className="text-sm text-slate-500">Nenhuma nota aprovada ainda</p>
-            </div>
-          )}
+          </div>
         </div>
 
         {/* ── Notas Pendentes ── */}

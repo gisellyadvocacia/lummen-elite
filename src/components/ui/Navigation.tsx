@@ -14,6 +14,7 @@ import {
   Users,
   ClipboardList,
   History,
+  DollarSign,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -24,6 +25,7 @@ const navItems = [
 
 const adminItems = [
   { href: "/admin", label: "Admin", icon: ShieldCheck },
+  { href: "/admin/vgv", label: "VGV", icon: DollarSign },
   { href: "/admin/brokers", label: "Corretores", icon: Users },
   { href: "/admin/notes", label: "Notas", icon: ClipboardList },
   { href: "/admin/rewards", label: "Premios", icon: Gift },

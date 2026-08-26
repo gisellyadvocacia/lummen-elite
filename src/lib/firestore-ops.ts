@@ -217,6 +217,53 @@ export async function deleteReward(id: string): Promise<void> {
 }
 
 // ============================================================
+// Gerenciamento de Corretores (Admin)
+// ============================================================
+
+/** Busca todos os usuários (corretores + admins) */
+export function subscribeAllProfiles(callback: (users: UserProfile[]) => void) {
+  const q = query(
+    collection(db, "users"),
+    orderBy("criado_em", "desc"),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const users = snap.docs.map((d) => d.data() as UserProfile);
+    callback(users);
+  });
+}
+
+/** Ativa ou desativa um corretor */
+export async function toggleBrokerActive(uid: string, ativo: boolean): Promise<void> {
+  const userRef = doc(db, "users", uid);
+  await updateDoc(userRef, {
+    ativo,
+    atualizado_em: serverTimestamp(),
+  });
+}
+
+/** Promove ou rebaixa um corretor (muda role) */
+export async function changeBrokerRole(uid: string, role: "corretor" | "admin"): Promise<void> {
+  const userRef = doc(db, "users", uid);
+  await updateDoc(userRef, {
+    role,
+    atualizado_em: serverTimestamp(),
+  });
+}
+
+/** Atualiza dados do corretor (admin) */
+export async function updateBrokerProfile(
+  uid: string,
+  data: Partial<Pick<UserProfile, "nome" | "creci" | "classificacao_atual" | "pontos_trimestre" | "pontos_semestre" | "vgv_acumulado_ano">>
+): Promise<void> {
+  const userRef = doc(db, "users", uid);
+  await updateDoc(userRef, {
+    ...data,
+    atualizado_em: serverTimestamp(),
+  });
+}
+
+// ============================================================
 // Mutações (escrita)
 // ============================================================
 

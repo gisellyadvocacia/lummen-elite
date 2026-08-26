@@ -1,0 +1,146 @@
+// ============================================================
+// Lummen Elite — Firestore Security Rules
+// RBAC: corretores acessam apenas seus próprios dados
+//       admins têm acesso total (auditoria/edição)
+// ============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ──
+
+    // Verifica se o usuário está autenticado
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Busca o documento de perfil do usuário autenticado
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Verifica se o usuário é admin
+    function isAdmin() {
+      return isAuth() && getUserProfile().role == 'admin';
+    }
+
+    // Verifica se o usuário é corretor ativo
+    function isCorretorAtivo() {
+      return isAuth()
+        && getUserProfile().role == 'corretor'
+        && getUserProfile().ativo == true;
+    }
+
+    // Verifica se o usuário é dono do recurso
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // ──────────────────────────────────────────────
+    // /users — Perfis de Usuário
+    // ──────────────────────────────────────────────
+
+    match /users/{uid} {
+      // Leitura:
+      //   - Próprio perfil (corretor ativo ou admin)
+      //   - Admin pode ler qualquer perfil
+      allow read: if isOwner(uid) || isAdmin();
+
+      // Criação (provisionamento):
+      //   - Usuário autenticado pode criar apenas o próprio perfil
+      //   - Dados iniciais são validados
+      allow create: if isAuth()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(['nome', 'email', 'role', 'classificacao_atual', 'pontos_trimestre', 'pontos_semestre', 'vgv_acumulado_ano', 'ativo'])
+        && request.resource.data.role in ['corretor']
+        && request.resource.data.classificacao_atual == 'Sem Classificacao'
+        && request.resource.data.pontos_trimestre == 0
+        && request.resource.data.pontos_semestre == 0
+        && request.resource.data.vgv_acumulado_ano == 0
+        && request.resource.data.ativo == true;
+
+      // Atualização:
+      //   - Corretor pode atualizar apenas campos próprios (nome, creci)
+      //   - Admin pode atualizar qualquer campo (role, pontos, classificação, ativo)
+      allow update: if isOwner(uid) && isCorretorAtivo()
+        // Corretor só pode alterar nome e creci
+        && request.resource.data.nome is string
+        && request.resource.data.nome.size() > 0
+        && request.resource.data.creci is string
+        // Não pode alterar role, pontos ou classificação
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.classificacao_atual == resource.data.classificacao_atual
+        && request.resource.data.pontos_trimestre == resource.data.pontos_trimestre
+        && request.resource.data.pontos_semestre == resource.data.pontos_semestre
+        && request.resource.data.vgv_acumulado_ano == resource.data.vgv_acumulado_ano
+        && request.resource.data.ativo == resource.data.ativo
+      ;
+      // Admin pode alterar tudo
+      allow update: if isAdmin();
+
+      // Deletar: apenas admin
+      allow delete: if isAdmin();
+    }
+
+    // ──────────────────────────────────────────────
+    // /transactions — Movimentações de Pontos
+    // ──────────────────────────────────────────────
+
+    match /transactions/{txId} {
+      // Leitura: próprio corretor ou admin
+      allow read: if isOwner(resource.data.brokerUid) || isAdmin();
+
+      // Criação: o sistema cria via Admin SDK (regras server-side)
+      // ou admin pode criar manualmente para auditoria
+      allow create: if isAdmin();
+
+      // Atualização: apenas admin (aprovação, cancelamento)
+      allow update: if isAdmin();
+
+      // Deletar: apenas admin
+      allow delete: if isAdmin();
+    }
+
+    // ──────────────────────────────────────────────
+    // /rewards — Catálogo de Recompensas
+    // ──────────────────────────────────────────────
+
+    match /rewards/{rewardId} {
+      // Leitura: qualquer corretor ativo ou admin
+      allow read: if isCorretorAtivo() || isAdmin();
+
+      // CRUD completo: apenas admin
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ──────────────────────────────────────────────
+    // /redemptions — Resgates de Recompensas
+    // ──────────────────────────────────────────────
+
+    match /redemptions/{redemptionId} {
+      // Leitura: próprio corretor ou admin
+      allow read: if isOwner(resource.data.brokerUid) || isAdmin();
+
+      // Criação: corretor ativo pode solicitar resgate
+      // (a transação atômica no client-side já valida pontos/estoque)
+      allow create: if isCorretorAtivo()
+        && request.resource.data.brokerUid == request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // Atualização: apenas admin (aprovação/entrega/cancelamento)
+      allow update: if isAdmin();
+
+      // Deletar: apenas admin
+      allow delete: if isAdmin();
+    }
+
+    // ──────────────────────────────────────────────
+    // /brokers (compat) — Dados legados
+    // ──────────────────────────────────────────────
+
+    match /brokers/{brokerId} {
+      allow read, write: if false; // Desabilitado — usar /users
+    }
+  }
+}
